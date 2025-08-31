@@ -1,96 +1,94 @@
 import streamlit as st
-import PyPDF2
-import google.generativeai as genai
-from fpdf import FPDF
-import os
+import requests
+import json # To pretty-print JSON
 
-# Configure the API key securely from Streamlit's secrets
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+# --- Streamlit App Configuration ---
+st.set_page_config(
+    page_title="Website Audit App",
+    page_icon="🔍",
+    layout="centered"
+)
 
-# Function to extract text from PDF
-def extract_text_from_pdf(pdf_file):
-    pdf_reader = PyPDF2.PdfReader(pdf_file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text()
-    return text
+st.title("🌐 Website Security Audit")
+st.markdown("Enter a URL below to get a security audit report.")
 
-# Function to generate flashcards using Gemini API
-def generate_flashcards_with_gemini(text):
-    try:
-        # Load and configure the Gemini model
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Generate flashcards from the provided text
-        prompt = f"Generate study flashcards based on the following text:\n\n{text}"
-        response = model.generate_content(prompt)
-        
-        # Return the generated flashcards
-        return response.text
-    except Exception as e:
-        st.error(f"Error generating flashcards: {e}")
-        return ""
+# --- API Endpoint ---
+API_URL = "https://cyber-p8a5.onrender.com/audit"
 
-# Function to create a PDF of flashcards
-def create_flashcards_pdf(flashcards, filename="flashcards.pdf"):
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    
-    # Add the flashcards content to the PDF
-    flashcard_list = flashcards.split('\n\n')
-    for flashcard in flashcard_list:
-        question_answer = flashcard.split("\n")
-        if len(question_answer) == 2:
-            question, answer = question_answer
-            pdf.multi_cell(0, 10, f"Question: {question}", align='L')
-            pdf.multi_cell(0, 10, f"Answer: {answer}\n", align='L')
-        else:
-            pdf.multi_cell(0, 10, f"{flashcard}\n\n", align='L')
-    
-    # Save the PDF to a file
-    pdf.output(filename)
+# --- User Input ---
+user_url = st.text_input(
+    "Enter the URL to audit (e.g., https://www.example.com)",
+    placeholder="https://www.google.com"
+)
 
-# Streamlit interface
-st.title("AI Flashcard Generator with Gemini API")
-st.write("Upload a PDF or text file to generate flashcards based on the content.")
+# --- Audit Button ---
+if st.button("Run Audit"):
+    if user_url:
+        st.info(f"Auditing: `{user_url}`... Please wait.")
+        try:
+            # Prepare the data payload
+            payload = {"url": user_url}
 
-# File uploader for PDF or text files
-uploaded_file = st.file_uploader("Upload a PDF or Text file", type=["pdf", "txt"])
-
-if uploaded_file is not None:
-    # Extract text based on file type
-    if uploaded_file.type == "application/pdf":
-        text = extract_text_from_pdf(uploaded_file)
-    elif uploaded_file.type == "text/plain":
-        text = uploaded_file.getvalue().decode("utf-8")
-    
-    # Display the extracted text (optional)
-    st.subheader("Extracted Text:")
-    st.text_area("Text Preview", text, height=200)
-
-    # Generate flashcards
-    if st.button("Generate Flashcards"):
-        flashcards = generate_flashcards_with_gemini(text)
-        if flashcards:
-            st.subheader("Generated Flashcards:")
-            flashcard_list = flashcards.split('\n\n')
-            
-            # Display flashcards on the page
-            for flashcard in flashcard_list:
-                st.markdown(f"**Flashcard:** {flashcard}")
-            
-            # Create and provide downloadable PDF
-            pdf_filename = "generated_flashcards.pdf"
-            create_flashcards_pdf(flashcards, filename=pdf_filename)
-
-            st.download_button(
-                label="Download Flashcards as PDF",
-                data=open(pdf_filename, "rb").read(),
-                file_name=pdf_filename,
-                mime="application/pdf"
+            # Make the POST request to the API
+            response = requests.post(
+                API_URL,
+                json=payload, # Use json= for automatic Content-Type: application/json
+                timeout=30 # Set a timeout for the request (in seconds)
             )
-            
-            # Clean up the generated PDF file
-            os.remove(pdf_filename)
+
+            # Check if the request was successful (status code 200)
+            if response.status_code == 200:
+                st.success("Audit completed successfully!")
+                audit_data = response.json()
+
+                # Display the raw JSON response
+                st.subheader("Audit Report (Raw JSON)")
+                st.json(audit_data) # Streamlit's built-in JSON display
+
+                # --- Optional: Display formatted results ---
+                st.subheader("Key Audit Findings")
+                if "audit_report" in audit_data and isinstance(audit_data["audit_report"], dict):
+                    report = audit_data["audit_report"]
+
+                    st.markdown("---")
+                    st.write(f"**Overall Status:** {report.get('status', 'N/A')}")
+                    st.write(f"**Description:** {report.get('description', 'No description available.')}")
+                    st.write(f"**Timestamp:** {report.get('timestamp', 'N/A')}")
+                    st.markdown("---")
+
+                    if "findings" in report and isinstance(report["findings"], list):
+                        st.write("**Detailed Findings:**")
+                        if report["findings"]:
+                            for i, finding in enumerate(report["findings"]):
+                                st.markdown(f"**Finding {i+1}:**")
+                                st.write(f"- **Severity:** {finding.get('severity', 'N/A')}")
+                                st.write(f"- **Issue:** {finding.get('issue', 'N/A')}")
+                                st.write(f"- **Description:** {finding.get('description', 'N/A')}")
+                                st.write(f"- **Recommendation:** {finding.get('recommendation', 'N/A')}")
+                                st.write(f"- **Category:** {finding.get('category', 'N/A')}")
+                                st.markdown("---")
+                        else:
+                            st.info("No specific findings reported for this URL.")
+                    else:
+                        st.warning("No 'findings' section found in the audit report.")
+                else:
+                    st.warning("The 'audit_report' structure was not as expected.")
+
+            else:
+                st.error(f"Error during audit: API returned status code {response.status_code}")
+                try:
+                    error_data = response.json()
+                    st.json(error_data)
+                except json.JSONDecodeError:
+                    st.write(response.text) # Display raw text if not JSON
+        except requests.exceptions.Timeout:
+            st.error("The request timed out. The server might be busy or the URL is taking too long to respond.")
+        except requests.exceptions.ConnectionError:
+            st.error("Could not connect to the API. Please check your internet connection or try again later.")
+        except requests.exceptions.RequestException as e:
+            st.error(f"An unexpected error occurred: {e}")
+    else:
+        st.warning("Please enter a URL to run the audit.")
+
+st.markdown("---")
+st.markdown("Powered by your custom API.")
