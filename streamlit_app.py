@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-import json # To pretty-print JSON
+import json
 
 # --- Streamlit App Configuration ---
 st.set_page_config(
@@ -13,7 +13,7 @@ st.title("🌐 Website Security Audit")
 st.markdown("Enter a URL below to get a security audit report.")
 
 # --- API Endpoint ---
-API_URL = "https://cyber-p8a5.onrender.com/audit" # Ensure this is the correct endpoint for your API
+API_URL = "https://cyber-p8a5.onrender.com/audit"
 
 # --- User Input ---
 user_url = st.text_input(
@@ -26,27 +26,20 @@ if st.button("Run Audit"):
     if user_url:
         st.info(f"Auditing: `{user_url}`... Please wait.")
         try:
-            # Prepare the data payload
             payload = {"url": user_url}
+            response = requests.post(API_URL, json=payload, timeout=60) # Increased timeout for potential longer audits
 
-            # Make the POST request to the API
-            response = requests.post(
-                API_URL,
-                json=payload, # Use json= for automatic Content-Type: application/json
-                timeout=30 # Set a timeout for the request (in seconds)
-            )
-
-            # Check if the request was successful (status code 200)
             if response.status_code == 200:
-                st.success("Audit completed successfully!")
                 audit_data = response.json()
+                st.success("Audit completed successfully!")
 
-                # Display the raw JSON response (optional, good for debugging)
-                with st.expander("View Raw Audit Report JSON"):
-                    st.json(audit_data) # Streamlit's built-in JSON display
+                # --- DEBUGGING STEP: ALWAYS SHOW RAW JSON ---
+                st.subheader("Raw API Response (for Debugging)")
+                st.json(audit_data)
+                # --- END DEBUGGING STEP ---
 
-                # --- Display formatted results ---
                 st.subheader("Audit Report Summary")
+                # Now, attempt to access 'audit_report'
                 if "audit_report" in audit_data and isinstance(audit_data["audit_report"], dict):
                     report = audit_data["audit_report"]
 
@@ -80,14 +73,12 @@ if st.button("Run Audit"):
                         st.info("No AI analysis available for this report.")
                     st.markdown("---")
 
-
                     # Display Detailed Findings
                     st.subheader("Detailed Findings")
                     if "findings" in report and isinstance(report["findings"], list):
                         if report["findings"]:
                             for i, finding in enumerate(report["findings"]):
                                 st.markdown(f"**Finding {i+1}:**", unsafe_allow_html=True)
-                                # Color-code severity for better visibility
                                 severity = finding.get('severity', 'N/A')
                                 if severity == "High":
                                     st.markdown(f"- **Severity:** <span style='color:red; font-weight:bold;'>{severity}</span>", unsafe_allow_html=True)
@@ -101,9 +92,6 @@ if st.button("Run Audit"):
                                 st.write(f"- **Issue:** {finding.get('issue', 'N/A')}")
                                 st.write(f"- **Description:** {finding.get('description', 'N/A')}")
                                 st.write(f"- **Recommendation:** {finding.get('recommendation', 'N/A')}")
-                                # The 'category' field was in your original code, but not in the new JSON structure.
-                                # If your API returns it sometimes, keep it. Otherwise, consider removing it.
-                                # st.write(f"- **Category:** {finding.get('category', 'N/A')}")
                                 st.markdown("---")
                         else:
                             st.info("No specific findings reported for this URL.")
@@ -116,9 +104,10 @@ if st.button("Run Audit"):
                 st.error(f"Error during audit: API returned status code {response.status_code}")
                 try:
                     error_data = response.json()
+                    st.subheader("Raw Error Response")
                     st.json(error_data)
                 except json.JSONDecodeError:
-                    st.write(response.text) # Display raw text if not JSON
+                    st.write(response.text)
         except requests.exceptions.Timeout:
             st.error("The request timed out. The server might be busy or the URL is taking too long to respond.")
         except requests.exceptions.ConnectionError:
