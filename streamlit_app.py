@@ -27,24 +27,27 @@ if st.button("Run Audit"):
         st.info(f"Auditing: `{user_url}`... Please wait.")
         try:
             payload = {"url": user_url}
-            response = requests.post(API_URL, json=payload, timeout=60) # Increased timeout for potential longer audits
+            response = requests.post(API_URL, json=payload, timeout=60) # Increased timeout
 
             if response.status_code == 200:
                 audit_data = response.json()
                 st.success("Audit completed successfully!")
 
-                # --- DEBUGGING STEP: ALWAYS SHOW RAW JSON ---
-                st.subheader("Raw API Response (for Debugging)")
-                st.json(audit_data)
-                # --- END DEBUGGING STEP ---
+                # --- Display Raw JSON (can be moved into an expander later) ---
+                with st.expander("View Raw Audit Report JSON"):
+                    st.json(audit_data)
+                # --- End Raw JSON Display ---
 
                 st.subheader("Audit Report Summary")
-                # Now, attempt to access 'audit_report'
-                if "audit_report" in audit_data and isinstance(audit_data["audit_report"], dict):
-                    report = audit_data["audit_report"]
+
+                # --- CORRECTED PART: 'report' is the top-level audit_data itself ---
+                # No need to check for "audit_report" key, as the report content is directly at the top level
+                if isinstance(audit_data, dict): # Basic check to ensure it's a dictionary
+                    report = audit_data # The entire audit_data dictionary is the report
 
                     st.markdown("---")
-                    st.write(f"**Overall Status:** <span style='background-color:#FFF3CD; padding: 4px; border-radius: 5px; color:#856404;'>{report.get('status', 'N/A')}</span>", unsafe_allow_html=True)
+                    # Use 'overall_status' key instead of 'status'
+                    st.write(f"**Overall Status:** <span style='background-color:#FFF3CD; padding: 4px; border-radius: 5px; color:#856404;'>{report.get('overall_status', 'N/A')}</span>", unsafe_allow_html=True)
                     st.write(f"**Description:** {report.get('description', 'No description available.')}")
                     st.write(f"**Timestamp:** {report.get('timestamp', 'N/A')}")
                     st.markdown("---")
@@ -67,6 +70,9 @@ if st.button("Run Audit"):
                     ai_analysis = report.get("ai_analysis", {})
                     if ai_analysis and ai_analysis.get("status") == "success":
                         st.markdown(ai_analysis.get("analysis", "No AI analysis content available."))
+                        # Add a disclaimer if present
+                        if "disclaimer" in ai_analysis:
+                            st.caption(f"Disclaimer: {ai_analysis['disclaimer']}")
                     elif ai_analysis and ai_analysis.get("status") == "failed":
                         st.warning("AI analysis failed: " + ai_analysis.get("analysis", "Reason unknown."))
                     else:
@@ -80,7 +86,9 @@ if st.button("Run Audit"):
                             for i, finding in enumerate(report["findings"]):
                                 st.markdown(f"**Finding {i+1}:**", unsafe_allow_html=True)
                                 severity = finding.get('severity', 'N/A')
-                                if severity == "High":
+                                if severity == "Critical": # Added Critical styling
+                                    st.markdown(f"- **Severity:** <span style='color:#DC3545; font-weight:bold;'>{severity}</span>", unsafe_allow_html=True)
+                                elif severity == "High":
                                     st.markdown(f"- **Severity:** <span style='color:red; font-weight:bold;'>{severity}</span>", unsafe_allow_html=True)
                                 elif severity == "Medium":
                                     st.markdown(f"- **Severity:** <span style='color:orange; font-weight:bold;'>{severity}</span>", unsafe_allow_html=True)
@@ -92,13 +100,15 @@ if st.button("Run Audit"):
                                 st.write(f"- **Issue:** {finding.get('issue', 'N/A')}")
                                 st.write(f"- **Description:** {finding.get('description', 'N/A')}")
                                 st.write(f"- **Recommendation:** {finding.get('recommendation', 'N/A')}")
+                                # The 'category' field is present in your findings, so re-add it if you want to display it
+                                st.write(f"- **Category:** {finding.get('category', 'N/A')}")
                                 st.markdown("---")
                         else:
                             st.info("No specific findings reported for this URL.")
                     else:
                         st.warning("No 'findings' section found in the audit report.")
                 else:
-                    st.error("The 'audit_report' structure was not found or was not as expected in the API response.")
+                    st.error("The API response was not a valid dictionary or was empty.")
 
             else:
                 st.error(f"Error during audit: API returned status code {response.status_code}")
