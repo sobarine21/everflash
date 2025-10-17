@@ -8,3 +8,4 @@ ta
 yfinance
 matplotlib
 shap
+PyPDF2
