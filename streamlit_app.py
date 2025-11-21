@@ -1,74 +1,61 @@
 import streamlit as st
 import requests
+import pandas as pd
 import json
 
-st.set_page_config(page_title="Supabase Internal DB Query", layout="wide")
+st.set_page_config(page_title="Supabase DB Query", layout="wide")
 
-st.title("🔍 Supabase Internal DB Query Runner")
-st.write("Run SQL on your Supabase DB using your Edge Function.")
+st.title("🔍 Supabase Internal DB Query Tool")
 
-# -------------------------
-# Load secrets
-# -------------------------
-SUPABASE_URL = st.secrets["SUPABASE_URL"]        # example: https://xxxx.supabase.co
-FUNCTION_PATH = "/functions/v1/internal-db-query"
+# ---------------------------------------------------------
+# Load from st.secrets
+# ---------------------------------------------------------
+API_URL = st.secrets["supabase"]["db_function_url"]
+API_KEY = st.secrets["supabase"]["api_key"]
+DATABASE_ID = st.secrets["supabase"]["database_id"]
 
-SERVICE_KEY = st.secrets["SUPABASE_SERVICE_ROLE"]   # keep service-role key in secrets!
+# ---------------------------------------------------------
+# User SQL input
+# ---------------------------------------------------------
+st.subheader("Enter SQL Query")
+query_text = st.text_area(
+    "Write your SQL here",
+    value="SELECT 1 as test_value;",
+    height=150
+)
 
-ENDPOINT = SUPABASE_URL + FUNCTION_PATH
-
-# -------------------------
-# User Input UI
-# -------------------------
-st.subheader("Query Inputs")
-
-database_id = st.text_input("Database ID", placeholder="your-database-id")
-query_text = st.text_area("SQL Query", value="SELECT * FROM users LIMIT 10")
-
-run_btn = st.button("Run Query")
-
-# -------------------------
-# Execute
-# -------------------------
-if run_btn:
-    if not database_id or not query_text:
-        st.error("Database ID and SQL Query are required.")
+if st.button("Run Query"):
+    if not query_text.strip():
+        st.error("Query cannot be empty.")
         st.stop()
 
     payload = {
-        "database_id": database_id,
+        "database_id": DATABASE_ID,
         "query_text": query_text
     }
 
     headers = {
         "Content-Type": "application/json",
-        "x-api-key": SERVICE_KEY
+        "x-api-key": API_KEY
     }
 
-    st.info("Running query...")
+    with st.spinner("Running query..."):
+        try:
+            response = requests.post(API_URL, headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
 
-    try:
-        response = requests.post(ENDPOINT, headers=headers, data=json.dumps(payload))
-
-        if response.status_code != 200:
-            st.error(f"❌ Error: {response.status_code}")
-            st.code(response.text)
-        else:
-            result = response.json()
-
+            # ---------------------------------------------------------
+            # Display Result
+            # ---------------------------------------------------------
             st.success("Query executed successfully!")
 
-            # Show JSON response
-            st.subheader("Raw JSON Response")
-            st.json(result)
-
-            # Try showing as a dataframe
-            if isinstance(result, dict) and "rows" in result:
-                st.subheader("Table Output")
-                st.dataframe(result["rows"])
+            if isinstance(data, dict) and "data" in data:
+                df = pd.DataFrame(data["data"])
+                st.dataframe(df, use_container_width=True)
             else:
-                st.info("No tabular data found in response.")
+                st.write(data)
 
-    except Exception as e:
-        st.error("Request failed.")
-        st.exception(e)
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
+            st.code(response.text)
